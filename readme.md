@@ -1,4 +1,4 @@
-# *LogStream — Distributed Logging Microservice* AI-generated readme
+# *Cloud Logging — Distributed Logging Microservice* 
 
 > A multi-tenant, serverless-resilient, encrypted logging infrastructure designed to be embedded into any application with zero latency impact.
 
@@ -391,3 +391,5 @@ Scale ingestor API horizontally behind a load balancer. ClickHouse remains singl
 Introduce ClickHouse sharding with `Distributed` table engine. Add Zookeeper or ClickHouse Keeper for replication coordination. This stage handles internet-scale log volumes.
 
 At every stage, the SDK interface, the API contract, and the data schema remain unchanged. Applications require no modification as the infrastructure beneath them scales.
+
+*This is an AI-generated readme*
