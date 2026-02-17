@@ -1,4 +1,4 @@
-# LogStream — Distributed Logging Microservice
+# *LogStream — Distributed Logging Microservice* AI-generated readme
 
 > A multi-tenant, serverless-resilient, encrypted logging infrastructure designed to be embedded into any application with zero latency impact.
 
