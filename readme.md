@@ -1,6 +1,6 @@
-# *Cloud Logging — Distributed Logging Microservice* 
+# LogStream — Logging Microservice
 
-> A multi-tenant, serverless-resilient, encrypted logging infrastructure designed to be embedded into any application with zero latency impact.
+A multi-tenant, cloud-native logging microservice built for high-frequency event ingestion, analytics, and observability across multiple applications. Designed with a zero-latency philosophy — your application never waits for logs.
 
 ---
 
@@ -9,387 +9,210 @@
 - [Overview](#overview)
 - [Architecture](#architecture)
 - [Features](#features)
-  - [Standard SDK](#1-standard-sdk)
-  - [Client & Server Wrapper Objects](#2-client--server-wrapper-objects)
-  - [API Key Management & Multi-Tenancy](#3-api-key-management--multi-tenancy)
-  - [OLAP Database Layer](#4-olap-database-layer)
-  - [Auto-Scaling Attributes](#5-auto-scaling-attributes)
-  - [Storage Window & Data Lifecycle](#6-storage-window--data-lifecycle)
-  - [Encryption](#7-encryption)
-- [Cold Start & Latency Resilience](#cold-start--latency-resilience)
+  - [1. OpenTelemetry SDK Wrapper](#1-opentelemetry-sdk-wrapper)
+  - [2. Multi-Tenant API Key Management](#2-multi-tenant-api-key-management)
+  - [3. ClickHouse OLAP Database](#3-clickhouse-olap-database)
+  - [4. Caching & Batching Layer](#4-caching--batching-layer)
+- [Cold Start & Latency Handling](#cold-start--latency-handling)
+- [Data Flow](#data-flow)
+- [Storage & Retention](#storage--retention)
+- [Security](#security)
 - [Deployment](#deployment)
-- [Technology Stack](#technology-stack)
-- [Cost Model](#cost-model)
-- [Scaling Path](#scaling-path)
 
 ---
 
 ## Overview
 
-LogStream is a self-hostable, multi-tenant logging microservice designed to be reused across multiple applications with minimal integration overhead. It solves three problems simultaneously: **high-frequency write throughput**, **zero application-side latency**, and **reliable delivery in serverless environments**. It exposes a unified SDK for Python backends and React/TypeScript frontends, manages tenants via API keys, and stores all data in a columnar OLAP database purpose-built for time-series log workloads.
+LogStream is a centralized logging microservice designed to be integrated across multiple independent applications via lightweight SDKs. It abstracts the complexity of log collection, transmission, storage, and querying behind a simple, developer-friendly interface — while ensuring no log is ever lost and no application is ever slowed down by the act of logging.
 
----
-
-## Architecture
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                         CLIENT APPLICATION                             │
-│                                                                        │
-│   SDK.log() → Local Buffer → Background Worker → Compressed Batch      │
-└────────────────────────────────────────┬───────────────────────────────┘
-                                         │ Fire-and-forget (async)
-                                         ▼
-                             ┌───────────────────────┐
-                             │    Edge Buffer Layer  │
-                             │  (Cloudflare Workers /│
-                             │   Fly.io always-on)   │
-                             │  No cold start. < 10ms│
-                             └───────────┬───────────┘
-                                         │ Batched relay
-                                         ▼
-                             ┌───────────────────────┐
-                             │    Message Queue      │
-                             │  (Upstash Redis       │
-                             │   Streams / SQS)      │
-                             │  Durability buffer    │
-                             └───────────┬───────────┘
-                                         │ Consumer group pull
-                                         ▼
-                             ┌───────────────────────┐
-                             │   Serverless Ingestor │
-                             │   (FastAPI / Lambda)  │
-                             │  Auth · Validate ·    │
-                             │  Decrypt · Enrich     │
-                             └───────────┬───────────┘
-                                         │ Bulk insert
-                                         ▼
-              ┌──────────────────────────────────────────────┐
-              │                  ClickHouse                  │
-              │    Hot (0–7d) │ Warm (7–60d) │ Cold (60–90d) │
-              │    SSD        │ HDD          │ S3 offload    │
-              └──────────────────────────────────────────────┘
-                                         │ TTL auto-purge at 90 days
-                                         ▼
-                             ┌───────────────────────┐
-                             │   Archive Storage     │
-                             │  (Backblaze B2 / S3)  │
-                             └───────────────────────┘
-```
+The service is built around four core pillars: a standardized SDK using OpenTelemetry conventions, API-key-based multi-tenancy, a ClickHouse OLAP database for analytical storage, and a Redis-backed caching and batching layer to minimize database write pressure.
 
 ---
 
 ## Features
 
-### 1. Standard SDK
+### 1. OpenTelemetry SDK Wrapper
 
-A unified SDK is published in two flavors that share the same design contract: one for Python (backend services) and one for TypeScript (React frontends and Node.js).
+The SDK is the primary integration point for client applications. Rather than building a proprietary protocol from scratch, LogStream wraps the OpenTelemetry (OTel) specification — the industry-standard observability framework — giving teams a familiar interface with production-grade semantics built in.
 
-**Core SDK Capabilities (both flavors)**
+#### What It Does
 
-- Single initialization with `api_key` and `endpoint`
-- Named log levels: `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`
-- Structured logging with arbitrary key-value pairs as attributes
-- Built-in local buffer that absorbs spikes and network failures
-- Automatic batching: flushes every 5 seconds or when 100 logs accumulate, whichever comes first
-- Retry logic with exponential backoff and jitter on delivery failure
-- Circuit breaker: pauses retries after 5 consecutive failures for 2 minutes to avoid draining resources on mobile or bandwidth-constrained environments
-- Graceful shutdown hook: flushes remaining buffer on process exit
-- Optional sampling rate per log level (e.g., sample `DEBUG` at 10% in production)
-- AES-256 payload encryption before any log leaves the device
+The SDK wraps OTel's `Tracer`, `Meter`, and `Logger` primitives and exposes a simplified, opinionated API tailored for application-level event logging. Under the hood it maps log calls to OTel's semantic conventions so that data is always structured, queryable, and consistent across tenants.
 
-**Python SDK specifics**
+#### Python SDK (Backend)
 
-- Supports both `asyncio` and synchronous usage patterns
-- Thread pool executor for non-blocking delivery in sync code
-- File-based persistence fallback when memory buffer exceeds threshold
-- Context manager support for structured scoped logging (e.g., log all events within a request block with a shared `request_id`)
+The Python SDK is designed for server-side applications including FastAPI, Django, Flask, and standalone scripts. It operates in two modes: synchronous and asynchronous. In both modes, the call to `logger.info()` or `logger.error()` returns immediately — actual transmission happens in a background thread managed by the SDK.
 
-**TypeScript/React SDK specifics**
+Key behaviors include automatic context propagation (attaching trace IDs, span IDs, and service names to every log), structured attribute capture (arbitrary key-value pairs appended to any log entry), local in-memory buffering with configurable flush intervals, graceful shutdown handling to flush remaining logs on `SIGTERM`, and built-in retry logic with exponential backoff on transient network failures.
 
-- Works in both browser and Node.js environments
-- `useLogger()` React hook for ergonomic component-level usage
-- IndexedDB persistence in the browser for queue durability across page reloads
-- `navigator.sendBeacon()` used automatically on `visibilitychange`/page unload to guarantee a final flush attempt
-- Service Worker integration (optional) for background queue processing
-- Web Crypto API used for AES-256 encryption natively in the browser with no additional dependencies
+#### TypeScript / React SDK (Frontend)
+
+The TypeScript SDK targets both browser and Node.js environments. In the browser, it uses `navigator.sendBeacon()` for page unload events to guarantee a final delivery attempt, and a Service Worker for background batched transmission during normal usage. It also integrates with React via a custom hook (`useLogger`) that scopes logging to a component's lifecycle and automatically captures route changes, user interactions, and page visibility events.
+
+Custom attributes like `time_spent_on_page`, `component_render_ms`, or `ab_test_variant` are passed as plain objects and forwarded to ClickHouse's dynamic `Map` column without requiring any schema changes.
+
+#### SDK Design Principles
+
+The SDK enforces a strict fire-and-forget contract. Application code calls a logging method and continues executing in the same tick. The SDK maintains an internal priority queue where `ERROR` and `FATAL` logs are flushed immediately, while `DEBUG` and `INFO` logs are batched over a configurable time window (default: 5 seconds or 100 entries, whichever comes first). This ensures critical events are captured with minimal delay while routine telemetry does not saturate the network.
 
 ---
 
-### 2. Client & Server Wrapper Objects
+### 2. Multi-Tenant API Key Management
 
-The SDK exposes a `Logger` wrapper object as its primary interface. This object is the only point of contact between your application and the logging infrastructure.
+Every application that integrates with LogStream is issued API keys to authenticate its log streams. The control plane for key management is backed by PostgreSQL, chosen for its ACID guarantees, mature ecosystem, and suitability for transactional metadata storage — a different concern from the high-frequency analytical writes handled by ClickHouse.
 
-**Wrapper Object Responsibilities**
+#### Key Structure
 
-- Holds the API key and resolved tenant context for the lifetime of the application session
-- Exposes a consistent method signature across Python and TypeScript so integrations feel identical regardless of language
-- Automatically attaches environment metadata to every log entry: SDK version, runtime environment (browser/server/lambda), hostname or user agent, and a monotonic sequence number for ordering
-- Provides a `setContext()` method that attaches persistent key-value pairs to all subsequent logs in a session (e.g., `user_id`, `tenant_id`, `session_id`, `app_version`)
-- Supports scoped child loggers: call `logger.child({ request_id: "abc" })` to create a derived logger that inherits all parent context and appends its own
-
-**Server-side usage pattern (Python)**
-
-Instantiated once at application startup (e.g., in a FastAPI lifespan handler or Django AppConfig) and injected via dependency injection or a module-level singleton. Each request handler calls `logger.info(...)` and returns immediately. The SDK handles everything else in the background.
-
-**Client-side usage pattern (React/TypeScript)**
-
-Instantiated in a root-level provider component and exposed via a React context. Child components consume the `useLogger()` hook and call log methods. No component ever awaits a log call.
-
----
-
-### 3. API Key Management & Multi-Tenancy
-
-Each application that integrates LogStream is treated as a separate tenant identified by an `app_id`. Access is gated by API keys.
-
-**API Key Format**
-
-Keys follow a structured format for easy identification and environment separation:
+API keys follow a structured format that encodes environment and application identity directly in the key string:
 
 ```
 app_{app_id}_{env}_{random_32_chars}
+Example: app_ecommerce_live_a7f3k9...
 ```
 
-Example: `app_dashboard_live_a7f3b2c1d9e4f8a2b3c4d5e6f7a8b9c0`
+This makes it immediately clear during debugging which application and environment a key belongs to, without needing a database lookup.
 
-**Key Storage**
+#### What PostgreSQL Stores
 
-Raw keys are never stored. On creation, the key is hashed with bcrypt and only the hash is persisted. The raw key is shown once at creation time.
+The PostgreSQL schema holds the full lifecycle of every API key: the key hash (bcrypt, never the raw key), the associated `app_id`, creation and expiry timestamps, per-key rate limits, permission scopes (e.g., write-only vs. read-write), and revocation status. It also stores the application registry — a record of every tenant, their assigned ClickHouse partition prefix, and their retention configuration.
 
-**Per-key Metadata**
+#### Multi-Tenancy Isolation
 
-Each key carries: `app_id`, `app_name`, `environment` (live/test), `rate_limit_per_minute`, `allowed_log_levels`, `created_at`, `last_used_at`, `revoked` flag. This enables per-app monitoring, revocation without downtime, and granular permission scoping.
+Each API key is bound to exactly one `app_id`. At the ingestion API, every incoming log payload is tagged with the `app_id` derived from the authenticated key before it is forwarded to the queue. ClickHouse enforces tenant isolation at the storage layer via the `app_id` column in the primary key sort order, meaning all queries are partitioned by tenant at the physical data level. One tenant can never accidentally read or affect another's data.
 
-**Multi-Tenant Data Isolation**
+#### App Monitoring
 
-Every log row stored in ClickHouse carries `app_id` as a leading partition and sort key component. All queries from the API layer enforce an `app_id = ?` predicate, making cross-tenant data leakage structurally impossible at the query level. Encryption keys are also scoped per `app_id`.
-
-**App Monitoring Dashboard**
-
-A lightweight read API exposes per-app metrics queryable in Grafana: log volume over time, error rate, top attributes, and active sessions. Alerts can be wired to Discord or Slack webhooks.
-
-**Rate Limiting**
-
-The ingestor enforces per-key rate limits at the edge buffer layer using a sliding window counter in Redis. Requests exceeding the limit receive a `429` response. The SDK handles this gracefully by holding excess logs in the local buffer and retrying after the window resets.
+The control plane exposes a lightweight dashboard that surfaces per-app ingestion rates, error rates, key usage, and quota consumption. Rate limiting is enforced at the API layer using a Redis sliding window counter keyed on `app_id`. If an application exceeds its configured requests-per-minute, the API returns `429 Too Many Requests` and the SDK queues the rejected batch for retry.
 
 ---
 
-### 4. OLAP Database Layer
+### 3. ClickHouse OLAP Database
 
-**ClickHouse** is chosen as the primary storage engine because it is purpose-built for the exact workload logging produces: append-only, high-cardinality, time-series data with infrequent point reads and frequent analytical aggregations.
+ClickHouse is the analytical backbone of LogStream. It is a columnar, append-only OLAP database purpose-built for the exact workload logging generates: extremely high write throughput, time-series queries over large datasets, and aggregations across millions of rows in milliseconds.
 
-**Why ClickHouse over alternatives**
+#### Why ClickHouse
 
-| Concern | ClickHouse | PostgreSQL | Elasticsearch |
+Traditional relational databases like PostgreSQL struggle under the write pressure of production logging. ClickHouse's columnar storage engine compresses repetitive log data (level strings, app IDs, status codes) aggressively — typically 10–20x compression ratios — and its `MergeTree` engine is optimized for ordered, append-only time-series data. Query performance on analytical operations (e.g., "count all errors for app X in the last 24 hours grouped by endpoint") is orders of magnitude faster than row-oriented databases.
+
+#### Schema Design
+
+The core logs table uses a `MergeTree` engine partitioned by month (`toYYYYMM(timestamp)`) and ordered by `(app_id, timestamp)`. This ordering means ClickHouse reads only the relevant tenant's data for any query. An `INDEX` on `(app_id, timestamp)` using `minmax` granularity further prunes unnecessary data blocks during scans.
+
+Log attributes — custom key-value pairs like `page_duration_ms`, `feature_flag`, or any future field — are stored in a `Map(String, String)` column. This is the auto-scaling attribute mechanism: no schema migrations, no ALTER TABLE statements, no downtime. Any new attribute key sent by the SDK appears automatically in queries the next time it is logged.
+
+#### TTL and Data Lifecycle
+
+ClickHouse's native TTL feature handles the 2–3 month retention window automatically. A TTL expression on the `timestamp` column deletes rows older than 90 days during background merge operations. For cold archival beyond 90 days, ClickHouse's `TTL ... TO DISK` feature can offload older partitions to S3-compatible object storage (MinIO or AWS S3) transparently, keeping query interfaces unchanged while moving cold data off expensive SSD storage.
+
+#### Storage Tiers
+
+| Tier | Age | Storage Medium | Purpose |
 |---|---|---|---|
-| Write throughput | Millions/sec | Thousands/sec | Hundreds of thousands/sec |
-| Compression ratio | 10–50x (columnar) | 3–5x | 3–5x |
-| Analytical query speed | Sub-second on billions | Slow at scale | Moderate |
-| Self-host cost | Free, open source | Free | Resource-heavy |
-| TTL / partitioning | Native | Manual | ILM policies |
-
-**Table Design**
-
-The primary `logs` table uses a `MergeTree` engine with the following design decisions:
-
-- Partitioned by `toYYYYMM(timestamp)` so each month's data is a discrete partition that can be dropped atomically for retention enforcement
-- Ordered by `(app_id, timestamp)` to co-locate all logs for a tenant and enable fast time-range scans
-- `attributes Map(String, String)` column stores all dynamic custom attributes without requiring schema migrations
-- `encrypted_payload String` column stores AES-256 encrypted sensitive fields separately from plaintext metadata
-- Secondary indices on `log_level` and `session_id` for common filter patterns
-- Native TTL expression deletes rows older than 90 days automatically during background merges
-
-**Write Path**
-
-Logs arrive from the message queue in batches. The consumer worker uses ClickHouse's native HTTP bulk insert endpoint to write thousands of rows per request, which is optimal for ClickHouse's columnar merge engine. Individual row inserts are never used.
+| Hot | 0 – 7 days | SSD | Fast queries, dashboards |
+| Warm | 7 – 60 days | HDD | Historical queries |
+| Cold | 60 – 90 days | ClickHouse + S3 | Retention compliance |
+| Archive | 90+ days | S3 / MinIO | Long-term audit |
 
 ---
 
-### 5. Auto-Scaling Attributes
+### 4. Caching & Batching Layer
 
-LogStream is designed so that adding a new tracking dimension to your application requires **zero backend changes**.
+Sending every individual log event directly to ClickHouse as it arrives is inefficient and unnecessary. ClickHouse performs best with large, ordered batch inserts rather than thousands of tiny single-row writes. The caching and batching layer, built on Redis, acts as a shock absorber between the ingestion API and the database.
 
-**How It Works**
+#### Redis Streams as the Buffer
 
-The `attributes Map(String, String)` column in ClickHouse accepts any arbitrary key-value pair. When your SDK sends a new attribute name for the first time, it simply flows through the pipeline and lands in that column without any migration, schema update, or deployment.
+Every log event accepted by the ingestion API is written to a Redis Stream rather than directly to ClickHouse. Redis Streams are an append-only, persistent data structure with consumer group semantics — similar to a lightweight Kafka topic. They offer microsecond write latency, at-least-once delivery guarantees, and native replay capability for handling consumer failures.
 
-**Example Progression**
+The stream is configured with persistence (`appendonly yes`) so that a Redis restart does not lose buffered logs. Messages are retained in the stream for a configurable window (default: 30 minutes) after acknowledgement, enabling replay if the ClickHouse consumer encounters errors.
 
-At launch, you log:
-```
-{ "page": "dashboard" }
-```
+#### Batch Aggregation Worker
 
-Three weeks later, you decide to track:
-```
-{ "page": "dashboard", "time_spent_ms": "3200", "scroll_depth_pct": "78", "ab_variant": "B" }
-```
+A pool of background workers (Consumer Group) reads from the Redis Stream and aggregates incoming log events into batches. A batch is flushed to ClickHouse when either of two conditions is met: a configurable batch size threshold is reached (default: 500 events) or a time window elapses (default: 3 seconds). This dual-trigger ensures that both high-traffic applications (flush by volume) and low-traffic applications (flush by time) are handled gracefully.
 
-No infrastructure change is required. ClickHouse stores the new keys immediately, and they are queryable the moment the first row lands.
+Workers use ClickHouse's native batch insert API (`INSERT INTO logs VALUES (...)` with multiple rows per statement), which is significantly more efficient than individual inserts and aligns with ClickHouse's internal merge scheduling.
 
-**Querying Dynamic Attributes**
+#### API-Level Caching
 
-ClickHouse exposes map access syntax (`attributes['time_spent_ms']`) and map functions (`mapKeys`, `mapValues`) so you can aggregate, filter, and group on any attribute you've ever logged.
+For read operations — such as querying recent logs or fetching aggregated metrics for a dashboard — the API layer uses Redis as a short-lived result cache. ClickHouse query results for common dashboard queries (e.g., error counts per app per hour) are cached for 60 seconds, preventing repeated full scans under dashboard polling. Cache keys are namespaced by `app_id` to ensure tenant isolation.
 
-**SDK-Level Attribute Typing**
+#### Benefits of This Approach
 
-While storage is loosely typed (all values are strings in the map), the SDK enforces value serialization consistently. Numbers, booleans, and objects are serialized to string before transmission and can be cast at query time using ClickHouse's `toInt64`, `toFloat64`, and `JSONExtract` functions.
+The batching layer decouples ingestion rate from write rate. During traffic spikes, the Redis buffer absorbs the load while workers drain it at a steady, optimal pace for ClickHouse. During low-traffic periods, the time-based flush ensures logs still arrive in ClickHouse within seconds. The result is consistently low write amplification on ClickHouse and a database that operates near its optimal throughput regardless of inbound traffic patterns.
 
 ---
 
-### 6. Storage Window & Data Lifecycle
+## Cold Start & Latency Handling
 
-Data moves through three tiers automatically based on age.
+Since the ingestion API may run on serverless infrastructure, two failure modes must be addressed: cold start delays causing data loss, and async logging adding latency to the calling application.
 
-**Tier 1 — Hot (0 to 7 days)**
+### Fire-and-Forget Contract
 
-Stored on SSD-backed ClickHouse storage. All recent log data is immediately queryable with sub-second response times. This is the tier used for live dashboards, real-time alerting, and active debugging sessions.
+The SDK enforces a strict contract: `logger.info()` returns in under 1 millisecond. The application never awaits network confirmation of log delivery. All transmission happens in a background worker thread or browser Service Worker, completely outside the application's critical path.
 
-**Tier 2 — Warm (7 to 60 days)**
+### Client-Side Durability
 
-Automatically migrated to HDD-backed ClickHouse volumes by a tiered storage policy. Queries still work transparently but may take slightly longer for large time ranges. Suitable for weekly trend analysis and retrospective debugging.
+The SDK maintains a local buffer (in-memory for servers, IndexedDB for browsers) that persists undelivered logs across network failures and cold start delays. If the ingestion API is cold and takes 2–5 seconds to respond, those logs are not lost — they are held in the buffer and retried with exponential backoff once the instance is warm.
 
-**Tier 3 — Cold / Archive (60 to 90 days)**
+### Edge Warm Buffer
 
-ClickHouse's `s3` disk integration offloads older partitions to object storage (Backblaze B2 or S3-compatible). Data remains queryable through ClickHouse without any application-level change; the engine fetches from S3 transparently. Storage cost drops to object storage pricing (~$0.006/GB/month on Backblaze B2).
+A lightweight always-on edge layer (Cloudflare Workers or a minimal Fly.io instance) sits in front of the serverless function. This layer accepts log payloads in under 10ms globally, writes them immediately to an Upstash Redis queue, and acknowledges the SDK. The serverless consumer then drains the queue at its own pace, cold starts notwithstanding. This architecture means cold starts are invisible to log producers.
 
-**Automatic Expiry**
+### Priority-Based Flushing
 
-ClickHouse's native TTL expression permanently deletes rows older than 90 days during background merge operations. No cron jobs, no manual partition drops, no operational burden. The retention window is configurable per deployment via a single TTL value change.
-
----
-
-### 7. Encryption
-
-All sensitive log data is encrypted before it leaves the originating application and remains encrypted at rest in the database.
-
-**Encryption Standard**
-
-AES-256-GCM is used for all payload encryption. GCM mode provides both confidentiality and authentication (tamper detection) in a single pass, making it suitable for network transmission and storage.
-
-**Key Architecture**
-
-- One encryption key per `app_id` — a compromised key for one tenant exposes no other tenant's data
-- Keys are stored in environment variables on the ingestor service and never written to the database
-- Key rotation is supported: the ingestor stores a `key_version` field alongside each encrypted payload, enabling background re-encryption jobs to rotate keys without downtime or data loss
-
-**What Is Encrypted**
-
-Structured metadata (`timestamp`, `app_id`, `log_level`) is stored in plaintext to enable indexing and partitioning. The `message` field and all `attributes` values for logs marked sensitive are stored only in the `encrypted_payload` column as an AES-256-GCM ciphertext blob. Decryption happens at query time on the ingestor's read API, never inside ClickHouse itself.
-
-**Transport Security**
-
-All communication between SDK and edge buffer uses TLS 1.3. AES payload encryption is additive — it protects data even if TLS termination is compromised at an intermediate layer (e.g., a misconfigured CDN).
-
-**Browser Encryption**
-
-The TypeScript SDK uses the Web Crypto API (`SubtleCrypto.encrypt`) natively in the browser. No third-party crypto library is required, reducing bundle size and eliminating supply-chain risk in the encryption path.
+The SDK's internal queue assigns priority to log levels. `ERROR` and `FATAL` events bypass batching and are transmitted immediately. `WARN` events are flushed within 1 second. `INFO` and `DEBUG` events are batched over the standard 5-second window. This ensures critical events reach storage quickly while routine telemetry is handled efficiently.
 
 ---
 
-## Cold Start & Latency Resilience
+## Data Flow
 
-This is a first-class design concern. LogStream is engineered so that serverless cold starts and network latency are **invisible to the calling application**.
+```
+1. App calls logger.error("Payment failed", {user_id: "123", amount: 99.99})
+2. SDK returns immediately (<1ms)
+3. Background worker picks up the log from local buffer
+4. Worker encrypts sensitive fields with AES-256
+5. Worker batches with other pending logs (up to 100 or 5 seconds)
+6. Batch is sent via HTTPS to the Edge Buffer
+7. Edge Buffer acknowledges and writes to Redis Stream
+8. ClickHouse Consumer Worker reads from Redis Stream
+9. Consumer aggregates into a 500-event batch
+10. Batch is inserted into ClickHouse in a single statement
+11. ClickHouse merges, compresses, and indexes the data
+12. Data is queryable within ~3–5 seconds of original log call
+```
 
-### Principle: Fire-and-Forget at Every Layer
+---
 
-The SDK's public interface is synchronous from the caller's perspective. `logger.info(...)` returns in under 1 millisecond regardless of network conditions. Internally, every log call is placed into an in-process queue and a background worker handles all batching, compression, encryption, and transmission.
+## Storage & Retention
 
-### SDK-Level Resilience
+Retention is configured per application at the tenant level. The default policy retains logs for 90 days in ClickHouse with monthly partitioning. Dropping a partition (e.g., all logs from 3 months ago) is a near-instant metadata operation in ClickHouse — no expensive DELETE scans required.
 
-The local buffer persists across retries. If the network is unavailable, logs accumulate in memory (or IndexedDB in the browser / a local file in Python) and are replayed automatically when connectivity is restored. A circuit breaker halts retry attempts during extended outages to conserve resources, and reopens the circuit automatically after a cool-down period.
+For compliance use cases requiring longer retention, partitions older than 90 days are offloaded to S3/MinIO in ClickHouse's native binary format. These archived partitions can be reattached to ClickHouse on-demand for historical queries without requiring a separate ETL pipeline.
 
-### Edge Buffer Layer (Cold Start Shield)
+---
 
-The most critical architectural decision for serverless deployments is the insertion of an always-on edge buffer between the SDK and the serverless ingestor. This layer (deployed on Cloudflare Workers or a small Fly.io VM) accepts log batches in under 10ms globally, writes them to a Redis Stream for durability, and returns a `202 Accepted` immediately. The serverless ingestor then reads from the stream at its own pace. A cold-starting ingestor introduces queue lag, not data loss.
+## Security
 
-### Delivery Guarantee Tiers
+All log payloads in transit are encrypted via TLS. Sensitive fields within log payloads (e.g., email addresses, tokens, PII flagged by the SDK) are additionally encrypted with AES-256-GCM before leaving the client, using a per-tenant encryption key stored in the server's secret manager. The ClickHouse `encrypted_payload` column stores these pre-encrypted blobs. Decryption happens at query time, server-side, only for authorized API key holders.
 
-Applications choose a delivery guarantee level per log level at SDK initialization time:
-
-| Level | Mechanism | Survives |
-|---|---|---|
-| Best Effort | In-memory buffer only | Network blips |
-| Persistent | In-memory + IndexedDB/file | App crash |
-| Guaranteed | Persistent + Edge buffer + Redis Stream | Edge outage |
-
-`ERROR` and `FATAL` logs default to Guaranteed. `DEBUG` logs default to Best Effort.
-
-### Keeping Serverless Instances Warm
-
-The SDK's background health-check pings a lightweight `/ping` endpoint on the ingestor every 30–60 seconds. This keeps at least one serverless instance warm for low-latency delivery during active application sessions. Provisioned concurrency can be added as a cost trade-off for high-traffic applications.
+API keys are stored as bcrypt hashes in PostgreSQL. The raw key is shown only once at creation time and is never recoverable from the database. Key rotation is a first-class operation: new keys can be issued and old keys revoked without any downtime or reconfiguration of the ClickHouse schema.
 
 ---
 
 ## Deployment
 
-The full stack is deployable via Docker Compose on a single VM for development and small-scale production.
+The entire stack is designed to run on zero-cost or minimal-cost infrastructure for early-stage usage:
 
-**Services**
-
-- `api` — FastAPI ingestor service (Python 3.11, Uvicorn)
-- `worker` — Redis Stream consumer that bulk-writes to ClickHouse
-- `redis` — Redis 7 with `appendonly yes` for stream durability
-- `clickhouse` — ClickHouse server with mounted data volume
-- `edge` — Optional: Cloudflare Worker or lightweight Fly.io app for always-on buffering
-
-**Recommended Hosting (Zero Cost Start)**
-
-| Component | Provider | Cost |
+| Component | Free Option | Paid Upgrade Path |
 |---|---|---|
-| API + Worker | Oracle Cloud Free Tier (ARM VM) | $0 |
-| ClickHouse | Self-hosted on same VM | $0 |
-| Redis | Upstash free tier | $0 |
-| Edge Buffer | Cloudflare Workers free tier | $0 |
-| Archive Storage | Backblaze B2 (10GB free) | $0 |
-| Monitoring | Grafana Cloud free tier | $0 |
+| Ingestion API | Railway / Render free tier | Dedicated VPS |
+| Redis Streams | Upstash free tier | Upstash Pro / self-hosted |
+| ClickHouse | Oracle Cloud Free Tier (24GB RAM) | ClickHouse Cloud |
+| PostgreSQL | Supabase free tier | Railway managed Postgres |
+| Cold Storage | Backblaze B2 / Cloudflare R2 (10GB free) | AWS S3 |
+| Edge Buffer | Cloudflare Workers (100K req/day free) | Cloudflare Workers Paid |
+
+As volume grows, each layer scales independently. ClickHouse can be sharded horizontally. Redis can be clustered. The ingestion API can run behind a load balancer with multiple instances. None of these scaling steps require changes to the SDK or the tenant's integration code.
 
 ---
 
-## Technology Stack
-
-| Layer | Technology | Rationale |
-|---|---|---|
-| Ingestor API | FastAPI (Python) | Async, fast, auto-docs, easy deployment |
-| Edge Buffer | Cloudflare Workers | No cold start, global, generous free tier |
-| Message Queue | Redis Streams (Upstash) | Durable, ordered, consumer groups, cheap |
-| OLAP Database | ClickHouse | Purpose-built for logs, columnar, TTL native |
-| Archive Storage | Backblaze B2 / S3 | Cheapest object storage available |
-| Monitoring | Grafana + ClickHouse datasource | Free, powerful, ClickHouse plugin available |
-| Python SDK | Pure Python + `httpx` | Async-native HTTP, minimal dependencies |
-| TypeScript SDK | Fetch API + Web Crypto | Zero dependencies in browser, tree-shakeable |
-| Encryption | AES-256-GCM | Authenticated encryption, native in all envs |
-| Key Hashing | bcrypt | Industry standard for secret hashing |
-
----
-
-## Cost Model
-
-| Scale | Monthly Cost |
-|---|---|
-| 0 – 500K logs/day | $0 (all free tiers) |
-| 500K – 5M logs/day | ~$5–15 (Upstash + storage) |
-| 5M – 50M logs/day | ~$30–80 (dedicated Redis + more VM) |
-| 50M+ logs/day | ~$150+ (ClickHouse cluster, dedicated infra) |
-
----
-
-## Scaling Path
-
-LogStream scales in discrete steps, each requiring minimal operational change:
-
-**Stage 1 — Single VM (0 to 1M logs/day)**
-Everything runs on one Oracle Cloud VM via Docker Compose. ClickHouse handles this load comfortably on a single node.
-
-**Stage 2 — Separate Services (1M to 10M logs/day)**
-Split ingestor API and ClickHouse onto separate VMs. Add a second Redis replica. Deploy edge buffer to Cloudflare Workers if not already done.
-
-**Stage 3 — Horizontal Ingestors (10M to 100M logs/day)**
-Scale ingestor API horizontally behind a load balancer. ClickHouse remains single-node. Add ClickHouse replication for read replicas to offload dashboard queries from the write path.
-
-**Stage 4 — ClickHouse Cluster (100M+ logs/day)**
-Introduce ClickHouse sharding with `Distributed` table engine. Add Zookeeper or ClickHouse Keeper for replication coordination. This stage handles internet-scale log volumes.
-
-At every stage, the SDK interface, the API contract, and the data schema remain unchanged. Applications require no modification as the infrastructure beneath them scales.
-
-*This is an AI-generated readme*
+*LogStream is designed to be invisible to the applications it observes — fast to integrate, zero overhead to run, and always there when you need to understand what your systems are doing.*
