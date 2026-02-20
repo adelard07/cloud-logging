@@ -2,11 +2,11 @@ import json
 from datetime import datetime
 from clickhouse_connect.driver.exceptions import ClickHouseError
 
-from src.utils.utils import logging, _to_sql_literal
-from src.db.initialise import Initialise
+from src.utils.utils import logging, to_sql_literal
+from src.db.clickhouse.initialise import Initialise
 from src.models.logs import Logs
 
-class Services:
+class ClickHouseServices:
     def __init__(self,):
         self.init = Initialise()
     
@@ -19,16 +19,27 @@ class Services:
         except Exception as e:
             logging.error(f"Error executing query: {query}. Error: {str(e)}")
             return None
-        
-        
-    def insert_log_entry(self, log_entry: Logs):
+            
+            
+    def insert_log(self, log_entry: dict[Logs] | list[dict[str, Logs]]):
         try:
-            log_dict = log_entry.model_dump(exclude_none=True)
+            entries = log_entry if isinstance(log_entry, list) else [log_entry]
+            if not entries:
+                return None
 
-            columns = ", ".join(log_dict.keys())
-            values = ", ".join([_to_sql_literal(v) for v in log_dict.values()])
+            dicts = [e.values().model_dump(exclude_none=True) for e in entries]
+            columns_list = sorted({k for d in dicts for k in d.keys()})
+            columns = ", ".join(columns_list)
 
-            query = f"INSERT INTO logs ({columns}) VALUES ({values})"
+            values_rows = []
+            for d in dicts:
+                row_vals = [to_sql_literal(d.get(col, None)) for col in columns_list]
+                values_rows.append(f"({', '.join(row_vals)})")
+
+            query = f"""
+                INSERT INTO logs ({columns}) VALUES {', '.join(values_rows)}; 
+                SELECT id FROM logs;
+            """
             return self.run_query(query)
 
         except ClickHouseError as che:
@@ -37,6 +48,7 @@ class Services:
         except Exception as e:
             logging.error(f"Error inserting log entry: {log_entry}. Error: {str(e)}")
             return None
+
 
 
     def drop_logs(self, log_id: list[str] | str | None = None):
@@ -82,7 +94,7 @@ class Services:
 
     
 if __name__ == "__main__":
-    service = Services()
+    service = ClickHouseServices()
     log_entry = Logs(
         event_name="Test Event",
         message="This is a test log entry.",
@@ -91,4 +103,4 @@ if __name__ == "__main__":
         source={"UnitTest": True},
     )
 
-    service.insert_log_entry(log_entry)
+    service.insert_log(log_entry)

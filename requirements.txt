@@ -1,3 +1,4 @@
 clickhouse-connect[all]
 pydantic
 numpy
+redis

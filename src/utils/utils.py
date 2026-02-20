@@ -1,3 +1,4 @@
+from zoneinfo import ZoneInfo
 import logging
 import json
 from datetime import datetime
@@ -12,10 +13,8 @@ logging.basicConfig(
         ]
 )
 
-logging.info("Logging setup complete. Logs will be written to cloud_logging.log")
 
-
-def _to_sql_literal(v):
+def to_sql_literal(v):
     if v is None:
         return "NULL"
 
@@ -27,3 +26,7 @@ def _to_sql_literal(v):
 
     s = str(v).replace("\\", "\\\\").replace("'", "\\'")
     return f"'{s}'"
+
+
+def get_ist_time(self):
+    return datetime.now(tz=ZoneInfo('Asia/Kolkata'))
