@@ -1,2 +1,5 @@
 .env
 clickhouse_credentials.txt
+*.pyc
+__pycache__/
+*/__pycache__/

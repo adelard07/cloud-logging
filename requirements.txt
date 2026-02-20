@@ -2,3 +2,5 @@ clickhouse-connect[all]
 pydantic
 numpy
 redis
+psycopg2-binary
+cryptography

@@ -23,3 +23,6 @@ Log sent -> stores internal cache (until maybe 10 object) -> writes redis mini b
 
 
 # Methodology (Why?)
+
+
+Sales Copilot that generates sales visits and plans route optimized salesperson visit plans on monthly/weekly basis generates pitch verbatims, provides google map coordinates and allows audio recordings to transcribe and summarize to generate next best actions.
