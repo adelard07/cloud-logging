@@ -72,7 +72,8 @@ class ClickHouseServices:
                 values_rows.append(f"({', '.join(row_vals)})")
 
             query = f"INSERT INTO logs ({columns}) VALUES {', '.join(values_rows)}"
-            return self.run_query(query)
+            self.run_query(query)
+            return len(row_dicts)
 
         except ClickHouseError as che:
             logging.error(f"ClickHouse error inserting log entry: {che}")
