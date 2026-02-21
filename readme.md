@@ -14,7 +14,6 @@ The service is built around four core pillars: a standardized SDK using OpenTele
 
 1. Setup `ClickHouse`
 2. Setup `Redis`
-3. Install `OpenTelemetry`
 3. Install `.\requirements.txt`
 
 

@@ -37,32 +37,34 @@ def get_ist_time(self):
     return datetime.now(tz=ZoneInfo('Asia/Kolkata'))
 
 
-_SECRET_KEY = os.getenv("AES_SECRET_KEY")
+class Crypting:
+    def __init__(self):
+        self._SECRET_KEY = os.getenv("AES_SECRET_KEY")
 
-if not _SECRET_KEY:
-    raise RuntimeError("AES_SECRET_KEY environment variable is not set")
+        if not self._SECRET_KEY:
+            raise RuntimeError("AES_SECRET_KEY environment variable is not set")
 
-_KEY = _SECRET_KEY.encode("utf-8")
+        self._KEY = self._SECRET_KEY.encode("utf-8")
 
-if len(_KEY) != 32:
-    raise ValueError("AES_SECRET_KEY must be exactly 32 bytes for AES-256")
+        if len(self._KEY) != 32:
+            raise ValueError("AES_SECRET_KEY must be exactly 32 bytes for AES-256")
 
-def encrypt(data: str) -> str:
-    if data is None:
-        return None
-    aesgcm = AESGCM(_KEY)
-    nonce = os.urandom(12)
-    ciphertext = aesgcm.encrypt(nonce, data.encode("utf-8"), None)
-    encrypted = nonce + ciphertext
-    return base64.b64encode(encrypted).decode("utf-8")
+    def encrypt(self, data: str) -> str:
+        if data is None:
+            return None
+        aesgcm = AESGCM(self._KEY)
+        nonce = os.urandom(12)
+        ciphertext = aesgcm.encrypt(nonce, data.encode("utf-8"), None)
+        encrypted = nonce + ciphertext
+        return base64.b64encode(encrypted).decode("utf-8")
 
 
-def decrypt(data: str) -> str:
-    if data is None:
-        return None
-    raw = base64.b64decode(data.encode("utf-8"))
-    nonce = raw[:12]
-    ciphertext = raw[12:]
-    aesgcm = AESGCM(_KEY)
-    plaintext = aesgcm.decrypt(nonce, ciphertext, None)
-    return plaintext.decode("utf-8")
+    def decrypt(self, data: str) -> str:
+        if data is None:
+            return None
+        raw = base64.b64decode(data.encode("utf-8"))
+        nonce = raw[:12]
+        ciphertext = raw[12:]
+        aesgcm = AESGCM(self._KEY)
+        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+        return plaintext.decode("utf-8")

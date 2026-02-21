@@ -4,3 +4,5 @@ numpy
 redis
 psycopg2-binary
 cryptography
+fastapi[all]
+uvicorn[standard]

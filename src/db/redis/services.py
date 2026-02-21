@@ -102,18 +102,18 @@ if __name__ == "__main__":
     # print(f"Insert response: {insert_resp}")
 
     # Fetch
-    raw_value = services.get_object()
-    print(f"\nValues from Redis:\n{raw_value}")
-    print(f"\nCache lenth from Redis:\n{len(raw_value)}")
+    # raw_value = services.get_object()
+    # print(f"\nValues from Redis:\n{raw_value}")
+    # print(f"\nCache lenth from Redis:\n{len(raw_value)}")
 
     # if raw_value:
     #     decoded = json.loads(raw_value)
     #     print("\nDecoded JSON:")
     #     print(decoded)
 
-    # # # Delete
-    # # delete_resp = services.delete_object(test_key)
-    # # print(f"\nDelete response: {delete_resp}")
+    # Delete
+    delete_resp = services.delete_object()
+    print(f"\nDelete response: {delete_resp}")
 
     # # Verify deletion
     # verify = services.get_object(test_key)

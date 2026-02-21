@@ -48,37 +48,55 @@ class InitialiseDB:
             logging.error(f"Error executing query: {query}. Error: {str(e)}")
             return None
 
+
     def init_servers_table(self):
         try:
             create_table_query = """
-            CREATE TABLE IF NOT EXISTS servers (
-                server_id VARCHAR(255) PRIMARY KEY,
-                server_name VARCHAR(255) UNIQUE NOT NULL,
-                server_description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
+                CREATE TABLE IF NOT EXISTS servers (
+                    server_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    app_id UUID NOT NULL REFERENCES apps(app_id),
+                    server_name VARCHAR(255) UNIQUE NOT NULL,
+                    server_description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
             """
             self.execute_query(create_table_query)
             return 
         except Exception as e:
             logging.error(f"Error initializing servers table: {str(e)}")
             return None
+        
+    
+    def init_api_keys_table(self):
+        try:
+            create_table_query = """
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    api_key_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    app_id UUID NOT NULL REFERENCES apps(app_id),
+                    api_key TEXT UNIQUE NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """
+            self.execute_query(create_table_query)
+            return 
+        except Exception as e:
+            logging.error(f"Error initializing api_keys table: {str(e)}")
+            return None
 
         
     def init_apps_table(self):
         try:
             create_table_query = """
-            CREATE TABLE IF NOT EXISTS apps (
-                app_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                app_serial SERIAL UNIQUE NOT NULL,
-                app_name VARCHAR(255) UNIQUE NOT NULL,
-                app_description TEXT,
-                server_id VARCHAR(255) FOREIGN KEY REFERENCES servers(server_id),
-                api_key ARRAY(TEXT),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
+                CREATE TABLE IF NOT EXISTS apps (
+                    app_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    app_serial SERIAL UNIQUE NOT NULL,
+                    app_name VARCHAR(255) UNIQUE NOT NULL,
+                    app_description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
             """
             self.execute_query(create_table_query)
             return 
@@ -133,8 +151,9 @@ def database_init(func):
 
 def main():
     dbi = InitialiseDB()
-    dbi.init_servers_table()
     dbi.init_apps_table()
+    dbi.init_servers_table()
+    dbi.init_api_keys_table()
     dbi.close()
 
 if __name__ == "__main__":

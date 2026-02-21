@@ -82,7 +82,7 @@ class ClickHouseServices:
             return None
 
 
-    def deletex_logs(self, log_id: list[str] | str | None = None):
+    def delete_logs(self, log_id: list[str] | str | None = None):
         try:
             if log_id is None:
                 query = "TRUNCATE TABLE logs"

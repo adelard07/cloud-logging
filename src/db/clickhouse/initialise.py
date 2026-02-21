@@ -46,6 +46,7 @@ class Initialise:
             create_table_query = """
                 CREATE TABLE IF NOT EXISTS logs (
                     log_id UUID DEFAULT generateUUIDv4(),
+                    app_id UUID NOT NULL,
 
                     timestamp DateTime DEFAULT now(),
                     event_type Nullable(String),
