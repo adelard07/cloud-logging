@@ -55,6 +55,7 @@ class InitialiseDB:
                 CREATE TABLE IF NOT EXISTS servers (
                     server_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     app_id UUID NOT NULL REFERENCES apps(app_id),
+                    server_type varchar(100),
                     server_name VARCHAR(255) UNIQUE NOT NULL,
                     server_description TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

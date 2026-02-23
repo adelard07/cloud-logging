@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
-import fastapi
+from mangum import Mangum
 
 from src.logging.url import router as logging_router
 
@@ -13,3 +12,6 @@ async def health_check():
 
 
 app.include_router(logging_router)
+
+
+handler = Mangum(app, lifespan="off")

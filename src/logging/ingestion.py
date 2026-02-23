@@ -21,43 +21,48 @@ class LogIngestionService:
         logging.info(f"LogIngestionService initialized | batch_size={self.internal_batch_size}")
 
     def ingest_log(self, log_object: Logs) -> Logs:
-        # add to mini batch in memory
-        self.batch_caching.add_log_to_cache(log_object)
-        current_batch_size = len(self.batch_caching.cache)
-        logging.debug(f"Log added to local batch | current_batch_size={current_batch_size}")
+        try:
+            # add to mini batch in memory
+            self.batch_caching.add_log_to_cache(log_object)
+            current_batch_size = len(self.batch_caching.cache)
+            logging.debug(f"Log added to local batch | current_batch_size={current_batch_size}")
 
-        # flush local batch to redis when threshold reached
-        flushed_cache = True
-        if current_batch_size >= self.internal_batch_size:
-            logging.info(f"Batch size reached {current_batch_size} | flushing_to_redis")
-            flushed_cache = self.flush_cache_to_redis()
+            # flush local batch to redis when threshold reached
+            flushed_cache = True
+            if current_batch_size >= self.internal_batch_size:
+                logging.info(f"Batch size reached {current_batch_size} | flushing_to_redis")
+                flushed_cache = self.flush_cache_to_redis()
 
-        if not flushed_cache:
-            logging.error("Failed to flush cache to Redis | log ingestion may be delayed")
+            if not flushed_cache:
+                logging.error("Failed to flush cache to Redis | log ingestion may be delayed")
+                return log_object
+
+            # check redis count
+            redis_log_cache = self.redis_services.get_object() or []
+            redis_count = len(redis_log_cache)
+            logging.info(f"Fetched logs from Redis | count={redis_count}")
+
+            if redis_count == 0:
+                logging.info("No logs found in Redis for ClickHouse flush")
+                return log_object
+
+            # flush to clickhouse when threshold reached
+            if redis_count < self.redis_flush_count:
+                logging.info(
+                    f"Redis log count {redis_count} has not reached flush threshold {self.redis_flush_count} | "
+                    "deferring ClickHouse flush"
+                )
+                return log_object
+
+            flushed_redis = self.flush_redis_to_clickhouse()
+            if not flushed_redis:
+                logging.error("Failed to flush Redis to ClickHouse | log ingestion may be delayed")
+
             return log_object
-
-        # check redis count
-        redis_log_cache = self.redis_services.get_object() or []
-        redis_count = len(redis_log_cache)
-        logging.info(f"Fetched logs from Redis | count={redis_count}")
-
-        if redis_count == 0:
-            logging.info("No logs found in Redis for ClickHouse flush")
-            return log_object
-
-        # flush to clickhouse when threshold reached
-        if redis_count < self.redis_flush_count:
-            logging.info(
-                f"Redis log count {redis_count} has not reached flush threshold {self.redis_flush_count} | "
-                "deferring ClickHouse flush"
-            )
-            return log_object
-
-        flushed_redis = self.flush_redis_to_clickhouse()
-        if not flushed_redis:
-            logging.error("Failed to flush Redis to ClickHouse | log ingestion may be delayed")
-
-        return log_object
+            
+        except Exception as e:
+            logging.exception(f"Error ingesting log | error={e}")
+            raise
 
     def flush_cache_to_redis(self) -> bool:
         try:
@@ -67,13 +72,9 @@ class LogIngestionService:
                 log_id = str(uuid.uuid4())
                 try:
                     redis_resp = self.redis_services.insert_object(log_pair=(log_id, log))
-                    logging.debug(
-                        f"Redis insert successful | log_id={log_id} | event={log.event_name} | resp={redis_resp}"
-                    )
+                    logging.debug(f"Redis insert successful | log_id={log_id} | event={log.event_name} | resp={redis_resp}")
                 except Exception as e:
-                    logging.exception(
-                        f"Redis insert failed | log_id={log_id} | event={getattr(log, 'event_name', None)} | error={e}"
-                    )
+                    logging.exception(f"Redis insert failed | log_id={log_id} | event={getattr(log, 'event_name', None)} | error={e}")
                     return False
 
             self.batch_caching.flush_cache()

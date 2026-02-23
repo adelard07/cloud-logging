@@ -13,13 +13,17 @@ class Services:
 
     def insert_object(self, log_pair: tuple[str, Any | Logs]):
         try:
-            log_key, log_dict = log_pair
+            log_key, log_payload = log_pair
 
-            payload = json.dumps(log_dict.model_dump(), default=str)
+            if isinstance(log_payload, Logs):
+                payload_dict = log_payload.model_dump(exclude_none=True)
+            elif isinstance(log_payload, dict):
+                payload_dict = {k: v for k, v in log_payload.items() if v is not None}
+            else:
+                payload_dict = {"message": str(log_payload)}
 
-            result = self.redis_obj.redis_client.set(str(log_key), payload)
-
-            return result
+            payload = json.dumps(payload_dict, default=str)
+            return self.redis_obj.redis_client.set(str(log_key), payload)
 
         except Exception as e:
             logging.exception(f"Error inserting object into Redis: {e}")
