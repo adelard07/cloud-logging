@@ -62,8 +62,8 @@ class Initialise:
                     -- MessageInfo (stored as JSON string)
                     message_info Nullable(String),
 
-                    -- Source (stored as JSON string: { diagnostics, source })
-                    source Nullable(String)
+                    -- SourceInfo (stored as JSON string: { diagnostics, source })
+                    source_info Nullable(String)
 
                 )
                 ENGINE = MergeTree()

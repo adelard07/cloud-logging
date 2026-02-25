@@ -38,7 +38,7 @@ class Logs(BaseModel):
     server_info: Optional[ServerInfo] = None
     request_info: Optional[RequestInfo] = None
     message_info: Optional[MessageInfo] = None
-    source: Optional[Source] = None
+    source_info: Optional[Source] = None
     
     
 if __name__ == "__main__":

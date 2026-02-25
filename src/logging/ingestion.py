@@ -1,8 +1,9 @@
 from datetime import datetime
+import os
 import time
 import uuid
 
-from src.models.logs import Logs
+from src.models.logs import Logs, ServerInfo, RequestInfo, MessageInfo, Source
 from src.utils.utils import logging
 from src.db.clickhouse.services import ClickHouseServices
 from src.db.redis.services import Services as RedisServices
@@ -126,22 +127,42 @@ class LogIngestionService:
             return False
 
 
-def main():
-    service = LogIngestionService(internal_batch_size=1, redis_flush_count=10)
 
-    for i in range(20):
+def main():
+    service = LogIngestionService(internal_batch_size=1, redis_flush_count=5)
+
+    for i in range(7):
         print("=" * 50)
         print(f"{i + 1})")
+
         log_entry = Logs(
             timestamp=datetime.now(),
+            event_type="ingestion_test",
             event_name=f"Test Event {i}",
-            message=f"This is a test log entry {i}.",
-            description=f"This log entry {i} is created for testing purposes.",
-            diagnostics="No diagnostics available.",
-            source={"UnitTest": True},
+            event_category="unit_test",
+            server_info=ServerInfo(
+                hostname=os.getenv("HOSTNAME", "local"),
+                portnumber=int(os.getenv("PORTNUMBER", "0")) or None,
+            ),
+            request_info=RequestInfo(
+                severity_level="INFO",
+                status_code=200,
+                session_id=str(uuid.uuid4()),
+                request_type="local_ingestion_test",
+                success_flag=True,
+            ),
+            message_info=MessageInfo(
+                message=f"This is a test log entry {i}.",
+                description=f"This log entry {i} is created for testing purposes.",
+            ),
+            source_info=Source(
+                diagnostics={"note": "No diagnostics available."},
+                source={"UnitTest": True, "index": i},
+            ),
         )
+
         time.sleep(1)
-        service.ingest_log(log_entry)   
+        service.ingest_log(log_entry)
 
 
 if __name__ == "__main__":
