@@ -141,7 +141,7 @@ def main():
             source={"UnitTest": True},
         )
         time.sleep(1)
-        service.ingest_log(log_entry)
+        service.ingest_log(log_entry)   
 
 
 if __name__ == "__main__":

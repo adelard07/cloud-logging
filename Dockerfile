@@ -8,6 +8,5 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 COPY . .
 
-EXPOSE 5858
-
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5858"]
+ENTRYPOINT ["python", "-m", "awslambdaric"]
+CMD ["main.handler"]

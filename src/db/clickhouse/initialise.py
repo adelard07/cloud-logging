@@ -44,32 +44,30 @@ class Initialise:
     def create_logs_table(self):
         try:
             create_table_query = """
-                CREATE TABLE IF NOT EXISTS logs (
+                CREATE TABLE IF NOT EXISTS logs
+                (
                     log_id UUID DEFAULT generateUUIDv4(),
-                    app_id UUID NOT NULL,
 
                     timestamp DateTime DEFAULT now(),
                     event_type Nullable(String),
                     event_name Nullable(String),
                     event_category Nullable(String),
 
-                    hostname Nullable(String),
-                    portnumber Nullable(Int32),
-                    api_key Nullable(String),
+                    -- ServerInfo (stored as JSON string)
+                    server_info Nullable(String),
 
-                    severity_level Nullable(String),
-                    status_code Nullable(Int32),
-                    session_id Nullable(String),
-                    request_id Nullable(String),
-                    success_flag Nullable(Boolean),
+                    -- RequestInfo (stored as JSON string)
+                    request_info Nullable(String),
 
-                    message Nullable(String),
-                    description Nullable(String),
-                    diagnostics Nullable(String),
-                    source Nullable(JSON)
+                    -- MessageInfo (stored as JSON string)
+                    message_info Nullable(String),
 
-                ) ENGINE = MergeTree()
-                ORDER BY (timestamp)
+                    -- Source (stored as JSON string: { diagnostics, source })
+                    source Nullable(String)
+
+                )
+                ENGINE = MergeTree()
+                ORDER BY timestamp;
             """
 
             result = self.client.query(create_table_query)
