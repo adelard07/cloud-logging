@@ -4,7 +4,7 @@ from clickhouse_connect.driver.exceptions import ClickHouseError
 
 from src.utils.utils import logging, to_sql_literal
 from src.db.clickhouse.initialise import Initialise
-from src.models.logs import Logs, ServerInfo, RequestInfo, MessageInfo, Source
+from src.models.logs import Logs, ServerInfo, RequestInfo, MessageInfo, SourceInfo
 
 
 class ClickHouseServices:
@@ -65,6 +65,7 @@ class ClickHouseServices:
                 normalized[k] = v
 
         return normalized
+
 
     def insert_log(self, log_entry: dict[str, Any] | list[dict[str, Any]]):
         try:
@@ -135,6 +136,7 @@ class ClickHouseServices:
             logging.error(f"Error inserting log entry: {log_entry}. Error: {str(e)}")
             return None
 
+
     def delete_logs(self, log_id: list[str] | str | None = None):
         try:
             if log_id is None:
@@ -171,60 +173,126 @@ class ClickHouseServices:
         return None
 
 
+    def fetch_logs(self, log_id: list[str] | str | None = None) -> list[dict[str, Any]] | dict[str, Any]:
+        try:
+            columns = self.init.client.query("DESCRIBE TABLE logs").result_set
+            col_names = [c[0] for c in columns if c and c[0]]
+
+            def _parse_json_maybe(v: Any) -> Any:
+                if v is None:
+                    return None
+                if isinstance(v, (bytes, bytearray)):
+                    try:
+                        v = v.decode()
+                    except Exception:
+                        return str(v)
+                if isinstance(v, str):
+                    s = v.strip()
+                    if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+                        try:
+                            return json.loads(s)
+                        except Exception:
+                            return v
+                return v
+
+            where_clause = ""
+            if log_id is not None:
+                if isinstance(log_id, str):
+                    ids = [log_id.strip()]
+                elif isinstance(log_id, list):
+                    ids = [str(x).strip() for x in log_id if str(x).strip()]
+                    if not ids:
+                        raise ValueError("log_id list is empty after cleaning.")
+                else:
+                    raise TypeError("log_id must be None, a string UUID, or a list of string UUIDs.")
+
+                ids_csv = ", ".join([to_sql_literal(x) for x in ids])
+                where_clause = f"WHERE log_id IN ({ids_csv})"
+
+            query = f"SELECT * FROM logs {where_clause} ORDER BY timestamp DESC"
+            rows = self.run_query(query) or []
+
+            out: list[dict[str, Any]] = []
+            for r in rows:
+                d = {col_names[i]: (r[i] if i < len(r) else None) for i in range(len(col_names))}
+                for k in ("server_info", "request_info", "message_info", "source"):
+                    if k in d:
+                        d[k] = _parse_json_maybe(d[k])
+                out.append(d)
+
+            if isinstance(log_id, str):
+                return out[0] if out else {}
+
+            return out
+
+        except ValueError as ve:
+            logging.error(f"Validation error in fetch_logs: {ve}")
+        except TypeError as te:
+            logging.error(f"Type error in fetch_logs: {te}")
+        except ClickHouseError as che:
+            logging.error(f"ClickHouse error while fetching logs: {che}")
+        except Exception as e:
+            logging.error(f"Unexpected error while fetching logs: {e}")
+
+        return {} if isinstance(log_id, str) else []
+
+
 if __name__ == "__main__":
     from datetime import datetime
     import uuid
 
     service = ClickHouseServices()
+    logs = service.fetch_logs()
+    print(logs)
 
-    # ---------- Single log test ----------
-    log = Logs(
-        timestamp=datetime.now(),
-        event_type="test",
-        event_name="Test Event",
-        event_category="unit_test",
-        server_info=ServerInfo(hostname="localhost", portnumber=8000),
-        request_info=RequestInfo(
-            severity_level="INFO",
-            status_code=200,
-            session_id=str(uuid.uuid4()),
-            request_type="insert_log",
-            success_flag=True,
-        ),
-        message_info=MessageInfo(
-            message="This is a test log entry.",
-            description="This log entry is created for testing purposes.",
-        ),
-        source=Source(
-            diagnostics={"note": "No diagnostics available."},
-            source={"origin": "UnitTest"},
-        ),
-    )
+#     # ---------- Single log test ----------
+#     log = Logs(
+#         timestamp=datetime.now(),
+#         event_type="test",
+#         event_name="Test Event",
+#         event_category="unit_test",
+#         server_info=ServerInfo(hostname="localhost", portnumber=8000),
+#         request_info=RequestInfo(
+#             severity_level="INFO",
+#             status_code=200,
+#             session_id=str(uuid.uuid4()),
+#             request_type="insert_log",
+#             success_flag=True,
+#         ),
+#         message_info=MessageInfo(
+#             message="This is a test log entry.",
+#             description="This log entry is created for testing purposes.",
+#         ),
+#         source=SourceInfo(
+#             diagnostics={"note": "No diagnostics available."},
+#             source={"origin": "UnitTest"},
+#         ),
+#     )
 
-    redis_key = str(uuid.uuid4())
-    single_payload = {redis_key: log}
+#     redis_key = str(uuid.uuid4())
+#     single_payload = {redis_key: log}
 
-    print("\n--- Inserting single log ---")
-    resp = service.insert_log(single_payload)
-    print("Insert response:", resp)
+#     print("\n--- Inserting single log ---")
+#     resp = service.insert_log(single_payload)
+#     print("Insert response:", resp)
 
-    # ---------- Batch test ----------
-    batch_payload: list[dict[str, Any]] = []
-    for i in range(3):
-        batch_log = log_entry = Logs(
-        timestamp=datetime.now(),
-        event_name="Test Event",
-        message_info=MessageInfo(
-            message="Log testing",
-            description="This is a log testing description."
-        ),
-        source=Source(
-            diagnostics={"note": "No diagnostics available."},
-            source={"origin": "UnitTest"}
-        ),
-)
-        batch_payload.append({str(uuid.uuid4()): batch_log})
+#     # ---------- Batch test ----------
+#     batch_payload: list[dict[str, Any]] = []
+#     for i in range(3):
+#         batch_log = log_entry = Logs(
+#         timestamp=datetime.now(),
+#         event_name="Test Event",
+#         message_info=MessageInfo(
+#             message="Log testing",
+#             description="This is a log testing description."
+#         ),
+#         source=SourceInfo(
+#             diagnostics={"note": "No diagnostics available."},
+#             source={"origin": "UnitTest"}
+#         ),
+# )
+#         batch_payload.append({str(uuid.uuid4()): batch_log})
 
-    print("\n--- Inserting batch logs ---")
-    batch_resp = service.insert_log(batch_payload)
-    print("Batch insert response:", batch_resp)
+#     print("\n--- Inserting batch logs ---")
+#     batch_resp = service.insert_log(batch_payload)
+#     print("Batch insert response:", batch_resp)

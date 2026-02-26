@@ -3,10 +3,10 @@ import os
 import time
 import uuid
 
-from src.models.logs import Logs, ServerInfo, RequestInfo, MessageInfo, Source
+from src.models.logs import Logs, ServerInfo, RequestInfo, MessageInfo, SourceInfo
 from src.utils.utils import logging
 from src.db.clickhouse.services import ClickHouseServices
-from src.db.redis.services import Services as RedisServices
+from src.db.redis.services import RedisServices
 from src.logging.batch_caching import BatchCaching
 
 
@@ -155,7 +155,7 @@ def main():
                 message=f"This is a test log entry {i}.",
                 description=f"This log entry {i} is created for testing purposes.",
             ),
-            source_info=Source(
+            source_info=SourceInfo(
                 diagnostics={"note": "No diagnostics available."},
                 source={"UnitTest": True, "index": i},
             ),

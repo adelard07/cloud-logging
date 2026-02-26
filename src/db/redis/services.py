@@ -6,7 +6,7 @@ from src.models.logs import Logs
 from src.utils.utils import logging
 
 
-class Services:
+class RedisServices:
     def __init__(self):
         self.redis_obj = Initialise()
 
@@ -162,45 +162,45 @@ class Services:
 if __name__ == "__main__":
     import uuid
     from datetime import datetime
-    from src.models.logs import ServerInfo, RequestInfo, MessageInfo, Source
+    from src.models.logs import ServerInfo, RequestInfo, MessageInfo, SourceInfo
 
-    services = Services()
+    services = RedisServices()
 
-    # Create test log aligned to the new schema
-    log = Logs(
-        timestamp=datetime.now(),
-        event_type="redis_test",
-        event_name="redis_test_event",
-        event_category="unit_test",
-        server_info=ServerInfo(hostname="localhost", portnumber=6379),
-        request_info=RequestInfo(
-            severity_level="INFO",
-            status_code=200,
-            session_id=str(uuid.uuid4()),
-            request_type="redis_set",
-            success_flag=True,
-        ),
-        message_info=MessageInfo(
-            message="Testing redis insert",
-            description="Simple redis write/read test",
-        ),
-        source=Source(
-            diagnostics={"mode": "test"},
-            source={"test": True},
-        ),
-    )
+    # # Create test log aligned to the new schema
+    # log = Logs(
+    #     timestamp=datetime.now(),
+    #     event_type="redis_test",
+    #     event_name="redis_test_event",
+    #     event_category="unit_test",
+    #     server_info=ServerInfo(hostname="localhost", portnumber=6379),
+    #     request_info=RequestInfo(
+    #         severity_level="INFO",
+    #         status_code=200,
+    #         session_id=str(uuid.uuid4()),
+    #         request_type="redis_set",
+    #         success_flag=True,
+    #     ),
+    #     message_info=MessageInfo(
+    #         message="Testing redis insert",
+    #         description="Simple redis write/read test",
+    #     ),
+    #     source=SourceInfo(
+    #         diagnostics={"mode": "test"},
+    #         source={"test": True},
+    #     ),
+    # )
 
-    test_key = str(uuid.uuid4())
+    # test_key = str(uuid.uuid4())
 
-    print(f"\nInserting log with key: {test_key}")
-    insert_resp = services.insert_object((test_key, log))
-    print(f"Insert response: {insert_resp}")
+    # print(f"\nInserting log with key: {test_key}")
+    # insert_resp = services.insert_object((test_key, log))
+    # print(f"Insert response: {insert_resp}")
 
-    raw_value = services.get_object(test_key)
-    print(f"\nFetched from Redis:\n{raw_value}")
+    # raw_value = services.get_object(test_key)
+    # print(f"\nFetched from Redis:\n{raw_value}")
 
-    delete_resp = services.delete_object(test_key)
-    print(f"\nDelete response: {delete_resp}")
+    # delete_resp = services.delete_object(test_key)
+    # print(f"\nDelete response: {delete_resp}")
 
-    verify = services.get_object(test_key)
-    print(f"\nPost-delete fetch (should be []): {verify}")
+    verify = services.get_object()
+    print(f"{type(verify)}\n{verify}")

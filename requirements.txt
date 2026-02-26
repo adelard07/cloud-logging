@@ -7,3 +7,4 @@ cryptography
 fastapi[all]
 uvicorn[standard]
 mangum
+pandas

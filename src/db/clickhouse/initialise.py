@@ -53,18 +53,11 @@ class Initialise:
                     event_name Nullable(String),
                     event_category Nullable(String),
 
-                    -- ServerInfo (stored as JSON string)
-                    server_info Nullable(String),
-
-                    -- RequestInfo (stored as JSON string)
-                    request_info Nullable(String),
-
-                    -- MessageInfo (stored as JSON string)
-                    message_info Nullable(String),
-
-                    -- SourceInfo (stored as JSON string: { diagnostics, source })
-                    source_info Nullable(String)
-
+                    -- Nested objects (native JSON)
+                    server_info Nullable(JSON),
+                    request_info Nullable(JSON),
+                    message_info Nullable(JSON),
+                    source_info Nullable(JSON)
                 )
                 ENGINE = MergeTree()
                 ORDER BY timestamp;
