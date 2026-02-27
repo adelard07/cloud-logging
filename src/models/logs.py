@@ -35,6 +35,7 @@ class Logs(BaseModel):
     event_type: Optional[str] = None
     event_name: Optional[str] = None
     event_category: Optional[str] = None
+    version: Optional[str] = None
 
     server_info: Optional[ServerInfo] = None
     request_info: Optional[RequestInfo] = None
