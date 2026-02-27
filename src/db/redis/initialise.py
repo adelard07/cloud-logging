@@ -13,6 +13,8 @@ class Initialise:
                 decode_responses=os.getenv("REDIS_DECODE_RESPONSE"),
                 username=os.getenv("REDIS_USERNAME"),
                 password=os.getenv("REDIS_PASSWORD"),
+                socket_connect_timeout=5,
+                socket_timeout=5,
             )
             
             if not self.redis_client.ping():

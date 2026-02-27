@@ -24,6 +24,8 @@ class Initialise:
                 username=self.username,
                 password=self.password,
                 secure=self.secure,
+                connect_timeout=5,
+                send_receive_timeout=10,
             )
 
             logging.info("ClickHouse client initialised successfully.")

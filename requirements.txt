@@ -8,3 +8,4 @@ fastapi[all]
 uvicorn[standard]
 mangum
 pandas
+openpyxl

@@ -54,9 +54,11 @@ class GenerateAPIKey:
             logging.error(f"Error decrypting API key: {str(e)}")
             return (False, None, None)
 
+
+
 if __name__=="__main__":
     key_generation = GenerateAPIKey()
-    api_key = key_generation.generate_api_key('b158dac7-eb5a-4823-81fa-a2c1143eceab')
+    api_key = key_generation.generate_api_key(app_id='b158dac7-eb5a-4823-81fa-a2c1143eceab')
     # api_key = 'W5gS3DwFVfXofI29kIG1H6cLRe9o3a/noTFh5GpJo961P8ge1y/9p43lxBHTN1xBCQ/DdTkNfhEoAJczNdxz2yDaxu2Jl8CyFnL9QJ+zxPEOa9xFx1iDmANjppzP8bHO+UlRk10='
 
     validation = key_generation.validate_api_key(api_key=api_key)

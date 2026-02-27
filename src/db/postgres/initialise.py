@@ -25,6 +25,7 @@ class InitialiseDB:
             dbname=os.getenv("DB_NAME"),
             user=os.getenv("DB_USER"),
             password=os.getenv("DB_PASSWORD"),
+            connect_timeout=5,
         )
         self.connection.autocommit = False
         self.cursor: PGCursor = self.connection.cursor()

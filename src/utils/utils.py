@@ -1,11 +1,12 @@
 from zoneinfo import ZoneInfo
-import base64
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-import os
 import logging
 import json
 from datetime import datetime
 from dotenv import load_dotenv
+import base64
+import os
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
 
 load_dotenv()
 
@@ -37,34 +38,46 @@ def get_ist_time(self):
     return datetime.now(tz=ZoneInfo('Asia/Kolkata'))
 
 
+import base64
+import os
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+
+
 class Crypting:
     def __init__(self):
-        self._SECRET_KEY = os.getenv("AES_SECRET_KEY")
+        key_raw = os.getenv("ENCRYPTION_KEY")
+        if not key_raw:
+            raise RuntimeError("ENCRYPTION_KEY environment variable is not set")
+        try:
+            decoded = base64.urlsafe_b64decode(key_raw + "=" * (-len(key_raw) % 4))
+            if len(decoded) not in (16, 24, 32):
+                raise ValueError(f"Decoded ENCRYPTION_KEY must be 16, 24, or 32 bytes, got {len(decoded)}")
+            self.key = decoded
+        except Exception:
+            raw_bytes = key_raw.encode("utf-8")
+            if len(raw_bytes) < 16:
+                raise RuntimeError(f"ENCRYPTION_KEY too short: {len(raw_bytes)} bytes, minimum 16")
+            self.key = raw_bytes[:32].ljust(32, b"\0")
 
-        if not self._SECRET_KEY:
-            raise RuntimeError("AES_SECRET_KEY environment variable is not set")
+    def encrypt(self, plaintext: str) -> str:
+        iv = os.urandom(16)
+        cipher = Cipher(algorithms.AES(self.key), modes.CFB(iv), backend=default_backend())
+        encryptor = cipher.encryptor()
+        ciphertext = encryptor.update(plaintext.encode("utf-8")) + encryptor.finalize()
+        return base64.urlsafe_b64encode(iv + ciphertext).decode("utf-8").rstrip("=")
 
-        self._KEY = self._SECRET_KEY.encode("utf-8")
-
-        if len(self._KEY) != 32:
-            raise ValueError("AES_SECRET_KEY must be exactly 32 bytes for AES-256")
-
-    def encrypt(self, data: str) -> str:
-        if data is None:
-            return None
-        aesgcm = AESGCM(self._KEY)
-        nonce = os.urandom(12)
-        ciphertext = aesgcm.encrypt(nonce, data.encode("utf-8"), None)
-        encrypted = nonce + ciphertext
-        return base64.b64encode(encrypted).decode("utf-8")
-
-
-    def decrypt(self, data: str) -> str:
-        if data is None:
-            return None
-        raw = base64.b64decode(data.encode("utf-8"))
-        nonce = raw[:12]
-        ciphertext = raw[12:]
-        aesgcm = AESGCM(self._KEY)
-        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
-        return plaintext.decode("utf-8")
+    def decrypt(self, token: str) -> str:
+        if not token or not isinstance(token, str):
+            raise ValueError("Token must be a non-empty string")
+        padded = token + "=" * (-len(token) % 4)
+        try:
+            raw = base64.urlsafe_b64decode(padded)
+        except Exception as e:
+            raise ValueError(f"Failed to base64-decode token: {e}")
+        if len(raw) < 17:  # 16 bytes IV + at least 1 byte ciphertext
+            raise ValueError(f"Token too short after decoding: {len(raw)} bytes")
+        iv, ciphertext = raw[:16], raw[16:]
+        cipher = Cipher(algorithms.AES(self.key), modes.CFB(iv), backend=default_backend())
+        decryptor = cipher.decryptor()
+        return (decryptor.update(ciphertext) + decryptor.finalize()).decode("utf-8")
