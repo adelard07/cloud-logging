@@ -52,15 +52,6 @@ class Initialise:
 
 
     def create_logs_table(self):
-        """
-        Creates the logs table in Redshift.
-
-        Key differences from ClickHouse:
-        - No native UUID auto-generation; uses a VARCHAR(36) with a default via a Python-side UUID or identity.
-        - No native JSON type; SUPER is Redshift's semi-structured data type (equivalent to JSON).
-        - No MergeTree engine; Redshift uses DISTKEY/SORTKEY for optimisation.
-        - DEFAULT now() is supported in Redshift via GETDATE().
-        """
         try:
             create_table_query = """
                 CREATE TABLE IF NOT EXISTS logs

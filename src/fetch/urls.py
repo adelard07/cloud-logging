@@ -1,4 +1,6 @@
 import io
+import uuid
+from datetime import datetime, date
 import math
 import numpy as np
 from urllib.parse import unquote
@@ -54,14 +56,29 @@ def get_all_logs(
             return {k: sanitize(v) for k, v in obj.items()}
         if isinstance(obj, list):
             return [sanitize(v) for v in obj]
+
+        # UUID -> string
+        if isinstance(obj, uuid.UUID):
+            return str(obj)
+
+        # datetime/date -> ISO string (optional but recommended)
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+
+        # NaN / inf
         if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
             return None
+
+        # numpy scalars
         if isinstance(obj, (np.integer,)):
             return int(obj)
         if isinstance(obj, (np.floating,)):
             return None if math.isnan(obj) else float(obj)
+
+        # numpy arrays
         if isinstance(obj, np.ndarray):
             return sanitize(obj.tolist())
+
         return obj
 
     payload = sanitize({"count": len(records), "logs": records})
