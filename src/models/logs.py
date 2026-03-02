@@ -32,6 +32,7 @@ class SourceInfo(BaseModel):
 
 class Logs(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
+    app_id: Optional[str] = None
     event_type: Optional[str] = None
     event_name: Optional[str] = None
     event_category: Optional[str] = None

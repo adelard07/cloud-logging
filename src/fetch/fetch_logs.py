@@ -14,14 +14,6 @@ class FetchLogs:
         self.clickhouse_services = ClickHouseServices()
 
     def _flatten_column(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Dynamically flattens a single dict cell by one level.
-        Nested sub-dicts are stringified to preserve their values as readable strings.
-
-        Example:
-            Input:  {'diagnostics': {'total_schedules': 511}, 'source': {'sdk': 'python'}}
-            Output: {'total_schedules': 511, 'sdk': 'python'}
-        """
         flat = {}
         for section, content in data.items():
             if isinstance(content, dict):
@@ -32,19 +24,6 @@ class FetchLogs:
         return flat
 
     def _flatten_columns(self, df: pd.DataFrame, *column_names: str) -> pd.DataFrame:
-        """
-        Accepts one or more column names and flattens each of them dynamically.
-        Each target column is expanded into individual columns and the original is dropped.
-
-        Args:
-            df:              Input DataFrame.
-            *column_names:   One or more column names to flatten, e.g.:
-                             _flatten_columns(df, "source_info")
-                             _flatten_columns(df, "source_info", "server_info", "request_info")
-
-        Returns:
-            DataFrame with target columns replaced by their flattened keys.
-        """
         for col in column_names:
             if col not in df.columns:
                 continue  # silently skip columns that don't exist

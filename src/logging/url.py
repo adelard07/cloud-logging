@@ -1,3 +1,4 @@
+# url.py
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,11 +13,14 @@ router = APIRouter(prefix="/logging", tags=["cloud", "logging", "ingestion"])
 @router.post("/ingest")
 async def log(log_model: Logs, tenant: dict = Depends(require_api_key)):
     try:
+        app_id = tenant.get("app_id")
+
         if log_model.source_info is None:
             log_model.source_info = SourceInfo(diagnostics={}, source={})
 
         if log_model.source_info.source is None:
             log_model.source_info.source = {}
+
         if not isinstance(log_model.source_info.source, dict):
             log_model.source_info.source = {"_source": log_model.source_info.source}
 
@@ -24,9 +28,12 @@ async def log(log_model: Logs, tenant: dict = Depends(require_api_key)):
             log_model.source_info.diagnostics = {}
 
         log_model.source_info.source["tenant"] = {
-            "app_id": tenant.get("app_id"),
+            "app_id": app_id,
             "server_id": tenant.get("server_id"),
         }
+
+        # Stamp app_id at the top level on the log model for direct DB querying
+        log_model.app_id = app_id
 
         if log_model.server_info is not None:
             log_model.source_info.source["server"] = {

@@ -49,6 +49,7 @@ class Initialise:
                 CREATE TABLE IF NOT EXISTS logs
                 (
                     log_id UUID DEFAULT generateUUIDv4(),
+                    app_id UUID,
 
                     timestamp DateTime DEFAULT now(),
                     event_type Nullable(String),
