@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import os
 import time
 import uuid
@@ -136,7 +136,7 @@ def main():
         print(f"{i + 1})")
 
         log_entry = Logs(
-            timestamp=datetime.now(),
+            timestamp=datetime.now(timezone(timedelta(hours=5, minutes=30))),
             event_type="ingestion_test",
             event_name=f"Test Event {i}",
             event_category="unit_test",

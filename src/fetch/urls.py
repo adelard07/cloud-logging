@@ -46,8 +46,9 @@ def get_all_logs(
     if df.empty:
         raise HTTPException(status_code=404, detail="No logs found.")
 
+    # convert into
     if "timestamp" in df.columns:
-        df["timestamp"] = df["timestamp"].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        df["timestamp"] = df["timestamp"].dt.tz_localize("UTC").dt.tz_convert("Asia/Kolkata").dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     records = df.to_dict(orient="records")
 
@@ -57,25 +58,20 @@ def get_all_logs(
         if isinstance(obj, list):
             return [sanitize(v) for v in obj]
 
-        # UUID -> string
         if isinstance(obj, uuid.UUID):
             return str(obj)
-
-        # datetime/date -> ISO string (optional but recommended)
+        
         if isinstance(obj, (datetime, date)):
             return obj.isoformat()
 
-        # NaN / inf
         if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
             return None
 
-        # numpy scalars
         if isinstance(obj, (np.integer,)):
             return int(obj)
         if isinstance(obj, (np.floating,)):
             return None if math.isnan(obj) else float(obj)
 
-        # numpy arrays
         if isinstance(obj, np.ndarray):
             return sanitize(obj.tolist())
 
