@@ -53,10 +53,12 @@ class FetchLogs:
     def fetch_format_redis(self) -> pd.DataFrame:
         raw_logs = self.redis_services.get_object()
         normalized = self._normalize_redis_record(raw_logs)
+        print("Fetch redis raw logs:", len(raw_logs))
         return self._build_dataframe(normalized)
 
     def fetch_format_clickhouse(self) -> pd.DataFrame:
         raw_logs = self.clickhouse_services.fetch_logs()
+        print("Fetch clickhouse raw logs:", len(raw_logs))
         return self._build_dataframe(raw_logs)
 
     def merge_format_logs(self) -> pd.DataFrame:
@@ -78,4 +80,4 @@ if __name__ == "__main__":
     print(f"=========={type(logs)}==========")
     print(logs.columns)
     print(logs.head())
-    logs.to_csv('logs_export_20260226_081818.csv')
+    # logs.to_csv('logs_export_20260226_081818.csv')

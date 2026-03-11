@@ -243,7 +243,7 @@ if __name__ == "__main__":
 
     service = ClickHouseServices()
     logs = service.fetch_logs()
-    print(logs)
+    print(len(logs))
 
 #     # ---------- Single log test ----------
 #     log = Logs(

@@ -9,3 +9,4 @@ uvicorn[standard]
 mangum
 pandas
 openpyxl
+requests

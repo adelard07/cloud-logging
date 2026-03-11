@@ -15,7 +15,7 @@ class Initialise:
             self.port = os.getenv("CLICKHOUSE_PORT")
             self.username = os.getenv("CLICKHOUSE_USERNAME")
             self.password = os.getenv("CLICKHOUSE_PASSWORD")
-            self.secure = os.getenv("CLICKHOUSE_SECURE", "false").lower() == "true"
+            self.secure = os.getenv("CLICKHOUSE_SECURE", "false")
 
             if not all([self.host, self.username, self.password]):
                 raise ValueError("Missing required environment variables for ClickHouse connection.")
