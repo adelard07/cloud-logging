@@ -7,14 +7,18 @@ dotenv.load_dotenv()
 class Initialise:
     def __init__(self):
         try:
-            self.redis_client = redis.Redis(
+            self.pool = redis.ConnectionPool(
                 host=os.getenv("REDIS_HOST"),
                 port=os.getenv("REDIS_PORT"),
+                password=os.getenv("REDIS_PASSWORD"),
+            )
+            self.redis_client = redis.Redis(
+                connection_pool=self.pool,
                 decode_responses=os.getenv("REDIS_DECODE_RESPONSE"),
                 username=os.getenv("REDIS_USERNAME"),
-                password=os.getenv("REDIS_PASSWORD"),
                 socket_connect_timeout=5,
                 socket_timeout=5,
+                max_connections=10
             )
             
             if not self.redis_client.ping():

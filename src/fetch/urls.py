@@ -48,8 +48,14 @@ def get_all_logs(
 
     # convert into
     if "timestamp" in df.columns:
-        df["timestamp"] = df["timestamp"].dt.tz_localize("UTC").dt.tz_convert("Asia/Kolkata").dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-
+        # If already tz-aware, convert directly; if naive, assume UTC first
+        if df["timestamp"].dt.tz is not None:
+            df["timestamp"] = df["timestamp"].dt.tz_convert("Asia/Kolkata")
+        else:
+            df["timestamp"] = df["timestamp"].dt.tz_localize("UTC").dt.tz_convert("Asia/Kolkata")
+        
+        df["timestamp"] = df["timestamp"].dt.strftime("%Y-%m-%dT%H:%M:%S+05:30")
+        
     records = df.to_dict(orient="records")
 
     def sanitize(obj):

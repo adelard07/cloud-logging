@@ -12,6 +12,7 @@ class Initialise:
     def __init__(self):
         try:
             self.host = os.getenv("CLICKHOUSE_HOST")
+            self.port = os.getenv("CLICKHOUSE_PORT")
             self.username = os.getenv("CLICKHOUSE_USERNAME")
             self.password = os.getenv("CLICKHOUSE_PASSWORD")
             self.secure = os.getenv("CLICKHOUSE_SECURE", "false").lower() == "true"
@@ -21,10 +22,11 @@ class Initialise:
 
             self.client = clickhouse_connect.get_client(
                 host=self.host,
+                port=self.port,
                 username=self.username,
                 password=self.password,
                 secure=self.secure,
-                connect_timeout=5,
+                connect_timeout=10,
                 send_receive_timeout=10,
             )
 
@@ -50,6 +52,7 @@ class Initialise:
                 (
                     log_id UUID DEFAULT generateUUIDv4(),
                     app_id UUID,
+                    version String DEFAULT 'development',
 
                     timestamp DateTime DEFAULT now(),
                     event_type Nullable(String),
@@ -107,6 +110,26 @@ class Initialise:
 
         return None
 
+
+    # def view_tables(self):
+    #     try:
+    #         query = """
+    #             SHOW TABLES;
+    #         """
+    #         result = self.client.query(query=query)
+    #         return result
+          
+    #     except ValueError as ve:
+    #         logging.error(f"Validation error: {ve}")
+
+    #     except SyntaxError as se:
+    #         logging.error(f"SQL syntax error while deleting table '{table_name}': {se}")
+
+    #     except ClickHouseError as che:
+    #         logging.error(f"ClickHouse error while deleting table '{table_name}': {che}")
+
+    #     except Exception as e:
+    #         logging.error(f"Unexpected error while deleting table '{table_name}': {e}")
 
 if __name__ == "__main__":
     try:
